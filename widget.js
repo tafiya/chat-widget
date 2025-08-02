@@ -1,8 +1,8 @@
 (function () {
   class MyWidget {
     constructor(options = {}) {
-      this.userId = options.userId || "687f180b3c54c79b362fa409";
-      this.sessionId = options.sessionId || "301613e3322c979773ef4638fcad7548";
+      this.userID = options.userId || "687f180b3c54c79b362fa409";
+      this.sessionID = options.sessionId || "301613e3322c979773ef4638fcad7548";
       this.baseUrl = options.baseUrl || "http://localhost:5000/api";
       this.socketUrl = options.socketUrl || "http://localhost:5000";
     }
@@ -16,7 +16,6 @@
     injectHTML() {
       const container = document.createElement("div");
       container.innerHTML = `
-       
         <!-- welcome div -->
         <div id="welcomeDiv" style="display:none; position:absolute; right:20px;">
             <div
@@ -226,10 +225,11 @@
       const chatDiv = document.getElementById("chatDiv");
       const openChatBtn = document.getElementById("openChatBtn");
       const chatIcon = document.getElementById("chatIcon");
-       const openToggleDiv = document.getElementById("openID");
-       const closeToggleDiv = document.getElementById("closeID");
+      const openToggleDiv = document.getElementById("openID");
+      const closeToggleDiv = document.getElementById("closeID");
 
       openChatBtn.addEventListener("click", () => {
+        console.log("hi")
         const isAnyOpen =
           welcomeDiv.style.display !== "none" ||
           messageDiv.style.display !== "none" ||
@@ -239,13 +239,12 @@
           welcomeDiv.style.display = "none";
           messageDiv.style.display = "none";
           chatDiv.style.display = "none";
-           openToggleDiv.style.display = "block";
-           closeToggleDiv.style.display = "none";
+          openToggleDiv.style.display = "block";
+          closeToggleDiv.style.display = "none";
         } else {
           welcomeDiv.style.display = "block";
           openToggleDiv.style.display = "none";
           closeToggleDiv.style.display = "block";
-
         }
       });
 
@@ -290,74 +289,127 @@
       const messagesDiv = document.getElementById("messages");
       const input = document.getElementById("messageInput");
       const sendBtn = document.getElementById("sendBtn");
-
       const socket = io(this.socketUrl);
+      const sessionId = this.sessionID;
+      const userId = this.userID;
+      const BASE_URL = this.baseUrl;
+console.log("sessionId =",sessionId)
+      async function getSingleUser(userId) {
+        const res = await fetch(`${BASE_URL}/users/singleUser/${userId}`);
+        return res.json();
+      }
 
-      const sessionId = this.sessionId;
-      const userId = this.userId;
+      async function getConversation(sessionId) {
+        const res = await fetch(
+          `${BASE_URL}/conversation/singleConversation/${sessionId}`
+        );
+        return res.json();
+      }
 
-      const appendMessage = (msg) => {
-        const div = document.createElement("div");
-        if (msg.sender === "status") {
-          div.style.textAlign = "center";
-          div.style.fontWeight = "500";
-          div.style.color = msg.text.includes("online") ? "green" : "red";
-          div.innerText = msg.text;
-        } else {
-          const isOwn = msg.sender === "user";
-          div.style.padding = "8px";
-          div.style.borderRadius = "8px";
-          div.style.maxWidth = "70%";
-          div.style.marginTop = "4px";
-          div.style.marginBottom = "4px";
-
-          if (isOwn) {
-            div.style.background = "#cffafe";
-            div.style.marginLeft = "auto";
-            div.style.textAlign = "right";
-          } else {
-            div.style.background = "#ecfccb";
-            div.style.marginRight = "auto";
-            div.style.textAlign = "left";
-          }
-          div.innerHTML = `<strong>${msg.sender}</strong>: ${msg.text}`;
-        }
-        messagesDiv.appendChild(div);
-        messagesDiv.scrollTop = messagesDiv.scrollHeight;
-      };
-
-      const sendMessage = async () => {
-        const message = input.value.trim();
-        if (!message) return;
-
-        appendMessage({ sender: "user", text: message });
-
-        const res = await fetch(`${this.baseUrl}/conversation/message`, {
+      async function sendMessageAPI(data) {
+        const res = await fetch(`${BASE_URL}/conversation/message`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId, userId, message }),
+          body: JSON.stringify(data),
         });
-        const data = await res.json();
-        if (data.status === "bot_replied") {
-          appendMessage({ sender: "bot", text: data.reply });
-        }
-        input.value = "";
-      };
+        return res.json();
+      }
+                //   const socket = io("http://localhost:5000");
+                //   const messagesDiv = document.getElementById("messages");
+                //   const input = document.getElementById("messageInput");
+                //   const sendBtn = document.getElementById("sendBtn");
 
-      sendBtn.addEventListener("click", sendMessage);
-      input.addEventListener(
-        "keypress",
-        (e) => e.key === "Enter" && sendMessage()
-      );
+                //   const userId = "687f180b3c54c79b362fa409"; // You can make this dynamic from URL params
+                //   let sessionId = "301613e3322c979773ef4638fcad7548";
 
-      socket.emit("join", sessionId);
-      socket.on("admin-reply", (data) => {
-        if (data.sessionId === sessionId)
-          appendMessage({ sender: "admin", text: data.text });
-      });
-      socket.on("admin-status", (data) =>
-        appendMessage({ sender: "status", text: data.message })
-      );
+                  // Load user & session
+                  const userData = await getSingleUser(userId);
+                  if (userData.user) sessionId = userData.user.sessionId;
+
+                  // Load existing conversation
+                  const convData = await getConversation(sessionId);
+                  if (convData.conversation) {
+                    convData.conversation.messages.forEach((msg) =>
+                      appendMessage(msg)
+                    );
+                  }
+                  console.log("conversation", convData);
+
+                  // Join socket room
+                  socket.emit("join", sessionId);
+
+                  // Listen for admin replies
+                  socket.on("admin-reply", (data) => {
+                    if (data.sessionId === sessionId)
+                      appendMessage({ sender: "admin", text: data.text });
+                  });
+
+                  // Listen for admin status changes
+                  socket.on("admin-status", (data) => {
+                    appendMessage({ sender: "status", text: data.message });
+                  });
+
+                  // Send message event
+                  const sendMessage = async () => {
+                    const message = input.value.trim();
+                    if (!message) return;
+
+                    appendMessage({ sender: "user", text: message });
+                    const res = await sendMessageAPI({
+                      sessionId,
+                      userId,
+                      message,
+                    });
+
+                    if (res.status === "bot_replied") {
+                      appendMessage({ sender: "bot", text: res.reply });
+                    }
+
+                    input.value = "";
+                  };
+
+                  sendBtn.addEventListener("click", sendMessage);
+                  input.addEventListener(
+                    "keypress",
+                    (e) => e.key === "Enter" && sendMessage()
+                  );
+
+                  // Append message to UI (inline CSS instead of Tailwind)
+                  function appendMessage(msg) {
+                    const div = document.createElement("div");
+
+                    if (msg.sender === "status") {
+                      div.style.textAlign = "center";
+                      div.style.fontWeight = "500";
+                      div.style.color = msg.text.includes("online")
+                        ? "green"
+                        : "red";
+                      div.innerText = msg.text;
+                    } else {
+                      const isOwn = msg.sender === "user";
+                      div.style.padding = "8px";
+                      div.style.borderRadius = "8px";
+                      div.style.maxWidth = "70%";
+                      div.style.marginTop = "4px";
+                      div.style.marginBottom = "4px";
+
+                      if (isOwn) {
+                        div.style.background = "#cffafe"; // similar to bg-cyan-100
+                        div.style.marginLeft = "auto";
+                        div.style.textAlign = "right";
+                      } else {
+                        div.style.background = "#ecfccb"; // similar to bg-lime-100
+                        div.style.marginRight = "auto";
+                        div.style.textAlign = "left";
+                      }
+
+                      div.innerHTML = `<strong>${msg.sender}</strong>: ${msg.text}`;
+                    }
+
+                    messagesDiv.appendChild(div);
+                    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                  }
+   
     }
   }
 
